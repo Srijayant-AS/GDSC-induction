@@ -1,9 +1,7 @@
 import pandas as pd
 
-# Load the dataset
 df = pd.read_csv('Internetusage_Beginnertask03.csv')
 
-# Basic inspection
 print(df.head())
 print(df.info())
 
@@ -14,7 +12,6 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
-# Data Cleaning
 df['start_time'] = pd.to_datetime(df['start_time'])
 
 def convert_usage_time(usage_str):
@@ -29,34 +26,25 @@ def convert_usage_time(usage_str):
 
 df['usage_seconds'] = df['usage_time'].apply(convert_usage_time)
 
-# Clean upload/download strings (remove commas if any)
 df['upload'] = pd.to_numeric(df['upload'], errors='coerce').fillna(0)
 df['download'] = pd.to_numeric(df['download'], errors='coerce').fillna(0)
 
-# Feature Engineering
 df['hour'] = df['start_time'].dt.hour
 df['day_of_week'] = df['start_time'].dt.dayofweek
 df['date'] = df['start_time'].dt.date
 
-# Peak Usage Hours Analysis
 hourly_usage = df.groupby('hour')['total_transfer'].mean().reset_index()
 
-# Data Hungry Users
 user_usage = df.groupby('name')['total_transfer'].sum().sort_values(ascending=False).head(10)
 
-# Disconnection Reasons
 reasons = df['seession_break_reason'].value_counts()
 
-# Regression Model: Predicting total network load per hour
-# Group by date and hour to get load per specific hour
 network_load = df.groupby(['date', 'hour']).agg({
     'total_transfer': 'sum',
     'name': 'count' # Number of active sessions
 }).reset_index().rename(columns={'name': 'active_sessions'})
 
-# Prepare data for regression
 X = network_load[['hour']]
-# Use dummy variables for hour to capture non-linear daily patterns
 X_dummies = pd.get_dummies(network_load['hour'], prefix='hour')
 y = network_load['total_transfer']
 
@@ -66,7 +54,6 @@ model = LinearRegression()
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 
-# Plotting
 plt.figure(figsize=(12, 6))
 sns.barplot(x='hour', y='total_transfer', data=hourly_usage, palette='viridis')
 plt.title('Average Network Load by Hour (Total Transfer)')
@@ -80,9 +67,6 @@ plt.title('Reasons for Session Termination')
 plt.ylabel('')
 plt.savefig('session_reasons.png')
 
-# Highlight Worst-Case "Peak Hours"
-# We define congestion as a factor of average load. 
-# Let's map load to "Estimated Speed Percentage" (Inverse)
 max_load = network_load['total_transfer'].max()
 network_load['speed_pct'] = 100 * (1 - (network_load['total_transfer'] / max_load))
 
@@ -98,17 +82,14 @@ plt.savefig('wifi_quality_prediction.png')
 print(f"R2 Score: {r2_score(y_test, y_pred)}")
 print(f"Top 5 Data Hungry Users:\n{user_usage.head()}")
 
-# Fix autopct and complete analysis
 plt.figure(figsize=(10, 6))
 reasons.plot(kind='pie', autopct='%1.1f%%', startangle=140, colors=sns.color_palette('pastel'))
 plt.title('Reasons for Session Termination')
 plt.ylabel('')
 plt.savefig('session_reasons.png')
 
-# Feature: Session Intensity (KB per second)
 df['intensity'] = df['total_transfer'] / df['usage_seconds'].replace(0, 1)
 
-# Average Transfer Rate by Hour
 hourly_intensity = df.groupby('hour')['intensity'].mean().reset_index()
 
 plt.figure(figsize=(12, 6))
@@ -119,7 +100,6 @@ plt.ylabel('Intensity (KB/s)')
 plt.grid(True)
 plt.savefig('transfer_intensity.png')
 
-# Output some summary data
 peak_hour = hourly_usage.loc[hourly_usage['total_transfer'].idxmax(), 'hour']
 worst_quality_hour = network_load.groupby('hour')['speed_pct'].mean().idxmin()
 
@@ -140,7 +120,6 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
 
-# Reload and clean to be safe
 df = pd.read_csv('Internetusage_Beginnertask03.csv')
 df['start_time'] = pd.to_datetime(df['start_time'])
 
@@ -159,14 +138,11 @@ df['hour'] = df['start_time'].dt.hour
 df['date'] = df['start_time'].dt.date
 df['intensity'] = df['total_transfer'] / df['usage_seconds'].replace(0, 1)
 
-# Aggregated Load per Hour
 network_load = df.groupby(['date', 'hour']).agg({
     'total_transfer': 'sum',
     'name': 'count'
 }).reset_index().rename(columns={'name': 'active_sessions'})
 
-# Congestion Prediction Model
-# We'll use Hour and Active Sessions as predictors for Load
 X = pd.get_dummies(network_load['hour'], prefix='hour')
 X['active_sessions'] = network_load['active_sessions']
 y = network_load['total_transfer']
@@ -177,8 +153,6 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 r2 = r2_score(y_test, y_pred)
 
-# Visualizations
-# 1. Peak Hours
 plt.figure(figsize=(10, 6))
 hourly_avg = network_load.groupby('hour')['total_transfer'].mean()
 sns.barplot(x=hourly_avg.index, y=hourly_avg.values, palette='magma')
@@ -187,7 +161,6 @@ plt.xlabel('Hour (24h format)')
 plt.ylabel('Total Data Transfer (KB)')
 plt.savefig('peak_hours_load.png')
 
-# 2. Predicted Slowness (Inverted Load)
 max_load = network_load['total_transfer'].max()
 network_load['speed_percentage'] = 100 * (1 - (network_load['total_transfer'] / max_load))
 plt.figure(figsize=(10, 6))
@@ -201,7 +174,6 @@ plt.ylabel('Relative Speed %')
 plt.legend()
 plt.savefig('wifi_speed_prediction.png')
 
-# 3. Data Hungry Users
 user_data = df.groupby('name')['total_transfer'].sum().sort_values(ascending=False).head(5)
 plt.figure(figsize=(10, 6))
 user_data.plot(kind='bar', color='teal')
@@ -210,14 +182,11 @@ plt.ylabel('Total Transfer (KB)')
 plt.xticks(rotation=45)
 plt.savefig('top_users.png')
 
-# 4. Reason Pie Chart
 reasons = df['seession_break_reason'].value_counts()
 plt.figure(figsize=(8, 8))
 plt.pie(reasons, labels=reasons.index, autopct='%1.1f%%', startangle=140)
 plt.title('Why does the Wi-Fi drop?')
 plt.savefig('break_reasons.png')
-
-# Result stats
 results = {
     "R2_Score": r2,
     "Worst_Hour": int(hourly_avg.idxmax()),
