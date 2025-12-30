@@ -1,0 +1,162 @@
+import pandas as pd
+
+# Load the datasets
+groceries_df = pd.read_csv('Groceries data.csv')
+basket_df = pd.read_csv('basket.csv')
+
+# Display head and info for Groceries data
+print("Groceries Data Head:")
+print(groceries_df.head())
+print("\nGroceries Data Info:")
+print(groceries_df.info())
+
+# Display head and info for Basket data
+print("\nBasket Data Head:")
+print(basket_df.head())
+print("\nBasket Data Info:")
+print(basket_df.info())
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Convert Date to datetime
+groceries_df['Date'] = pd.to_datetime(groceries_df['Date'])
+
+# 1. Most frequently sold items
+item_counts = groceries_df['itemDescription'].value_counts().head(10)
+
+plt.figure(figsize=(10, 6))
+sns.barplot(x=item_counts.values, y=item_counts.index, palette='viridis')
+plt.title('Top 10 Most Frequently Sold Items')
+plt.xlabel('Frequency')
+plt.ylabel('Item')
+plt.savefig('top_10_items.png')
+
+# 2. Monthly sales trend
+# Group by Year-Month
+groceries_df['YearMonth'] = groceries_df['Date'].dt.to_period('M')
+monthly_sales = groceries_df.groupby('YearMonth').size()
+
+plt.figure(figsize=(12, 6))
+monthly_sales.plot(kind='line', marker='o')
+plt.title('Monthly Sales Trend')
+plt.xlabel('Date')
+plt.ylabel('Number of Items Sold')
+plt.grid(True)
+plt.savefig('monthly_sales_trend.png')
+
+# 3. Heatmap: Day of Week vs Month
+# day_of_week in df is 0-6? Or 1-7?
+# Let's check unique values or just use names
+pivot_table = groceries_df.pivot_table(index='day_of_week', columns='month', values='Member_number', aggfunc='count')
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(pivot_table, cmap='YlGnBu', annot=True, fmt='d')
+plt.title('Heatmap of Sales: Day of Week vs Month')
+plt.xlabel('Month')
+plt.ylabel('Day of Week')
+plt.savefig('heatmap_dow_month.png')
+
+# 4. Box plot of items per transaction (Basket Size)
+# Transaction defined by Member_number and Date
+basket_sizes = groceries_df.groupby(['Member_number', 'Date']).size()
+
+plt.figure(figsize=(8, 6))
+sns.boxplot(y=basket_sizes)
+plt.title('Distribution of Items per Transaction (Basket Size)')
+plt.ylabel('Number of Items')
+plt.savefig('basket_size_boxplot.png')
+
+print("EDA plots generated.")
+print("Most frequent items:\n", item_counts)
+print("Average basket size:", basket_sizes.mean())
+print("Max basket size:", basket_sizes.max())
+
+from mlxtend.frequent_patterns import apriori
+from mlxtend.frequent_patterns import association_rules
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+
+# --- Market Basket Analysis ---
+
+# Create transactions: Group by Member_number and Date
+transactions = groceries_df.groupby(['Member_number', 'Date'])['itemDescription'].apply(list).reset_index(name='items')
+
+# Convert to one-hot encoded format for Apriori
+# We can use TransactionEncoder
+from mlxtend.preprocessing import TransactionEncoder
+
+te = TransactionEncoder()
+te_ary = te.fit(transactions['items']).transform(transactions['items'])
+df_trans = pd.DataFrame(te_ary, columns=te.columns_)
+
+# Run Apriori
+# Use a low min_support because grocery data is sparse and we want to find some rules
+frequent_itemsets = apriori(df_trans, min_support=0.001, use_colnames=True)
+
+# Generate Association Rules
+rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1.0)
+
+# Sort rules by lift or confidence
+top_rules = rules.sort_values(by='lift', ascending=False).head(10)
+print("Top Association Rules:")
+print(top_rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])
+
+# Save rules to csv for reference
+top_rules.to_csv('association_rules.csv', index=False)
+
+
+# --- Customer Clustering ---
+
+# 1. Feature Engineering
+# Recency: Days since last purchase
+max_date = groceries_df['Date'].max()
+customer_agg = groceries_df.groupby('Member_number').agg({
+    'Date': lambda x: (max_date - x.max()).days,
+    'itemDescription': 'count',
+    'Member_number': 'count' # Just to have a count, actually same as itemDescription
+}).rename(columns={'Date': 'Recency', 'itemDescription': 'Frequency'})
+
+# Frequency here is total items bought.
+# Maybe we want number of visits (unique dates)?
+visits = groceries_df.groupby('Member_number')['Date'].nunique()
+customer_agg['Visits'] = visits
+
+# Monetary? We don't have prices. We can assume each item is a unit of value.
+# So 'Frequency' (item count) acts as a proxy for Monetary value/Volume.
+# Let's use Recency, Visits, and Total Items (Frequency).
+
+features = customer_agg[['Recency', 'Visits', 'Frequency']]
+
+# 2. Scaling
+scaler = StandardScaler()
+scaled_features = scaler.fit_transform(features)
+
+# 3. K-Means
+# Find optimal k using Elbow method (simplified: just try 3 or 4)
+# Let's pick k=3 for High, Medium, Low value customers
+kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+customer_agg['Cluster'] = kmeans.fit_predict(scaled_features)
+
+# Analyze clusters
+cluster_summary = customer_agg.groupby('Cluster').mean()
+print("\nCluster Summary:")
+print(cluster_summary)
+
+# Visualizing Clusters
+plt.figure(figsize=(10, 6))
+sns.scatterplot(x='Recency', y='Frequency', hue='Cluster', data=customer_agg, palette='viridis')
+plt.title('Customer Clusters: Recency vs Total Items Purchased')
+plt.savefig('customer_clusters.png')
+
+# Save customer data with clusters
+customer_agg.to_csv('customer_clusters.csv')
+
+# Check for instant food items or noodles
+instant_items = [item for item in groceries_df['itemDescription'].unique() if 'instant' in item.lower() or 'noodle' in item.lower()]
+print("Instant items found:", instant_items)
+
+# Check for salty snacks
+snack_items = [item for item in groceries_df['itemDescription'].unique() if 'snack' in item.lower() or 'chip' in item.lower()]
+print("Snack items found:", snack_items)
