@@ -61,12 +61,6 @@ plt.xlabel('Hour of Day')
 plt.ylabel('Average Total Transfer (KB)')
 plt.savefig('peak_usage_hours.png')
 
-plt.figure(figsize=(10, 6))
-reasons.plot(kind='pie', autopct='%1.1%%', startangle=140, colors=sns.color_palette('pastel'))
-plt.title('Reasons for Session Termination')
-plt.ylabel('')
-plt.savefig('session_reasons.png')
-
 max_load = network_load['total_transfer'].max()
 network_load['speed_pct'] = 100 * (1 - (network_load['total_transfer'] / max_load))
 
